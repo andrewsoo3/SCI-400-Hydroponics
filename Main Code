@@ -1,0 +1,196 @@
+// Code by Erika Zen and Andrew Soo
+
+//Link for Humidity temperature sensor 
+//  https://arduinogetstarted.com/tutorials/arduino-temperature-humidity-sensor 
+ 
+//Humidity library 
+#include "DHT.h" 
+//Time library 
+#include <Wire.h> 
+#include <DS3231.h> 
+
+// SD Library 
+// (c) Michael Schoeffler 2016, http://www.mschoeffler.de
+#include <SD.h> //Load SD library
+ 
+int chipSelect = 4; //chip select pin for the MicroSD Card Adapter
+File file; // file object that is used to read and write data
+ 
+#define DHTPIN 2 
+#define DHTTYPE DHT11 
+ 
+// Pump pin
+int pumpOn = LOW;
+int pumpOff = HIGH;
+
+unsigned long previousPumpTime = 0;
+unsigned long pumpStartTime = 0; 
+const unsigned long pumpInterval = 1200000; // 
+const unsigned long pumpDuration = 14400000; //
+const int pumpPin = 7;
+int pumpState = pumpOff; 
+
+// data collection 
+unsigned long previousDataCollection = 0; 
+unsigned long dataCollectTime = 0; 
+const unsigned long dataInterval = 5000; // collect for 5 seconds 
+const unsigned long datadDuration = 600000; // collect every 10 minutes 
+const int dataPin = 4; 
+
+//Humidity 
+DHT dht(DHTPIN, DHTTYPE); 
+
+//Time 
+DS3231 clock; 
+RTCDateTime dt; 
+
+
+void setup() { 
+
+  // Pump
+  {
+  pinMode(pumpPin, OUTPUT);
+  digitalWrite(pumpPin, pumpOff);
+
+  }
+  // Humidity 
+  Serial.begin(9600); 
+  dht.begin(); // initialize the sensor 
+ 
+ 
+   
+ 
+ //RTC 
+  Serial.println("Initialize DS3231"); 
+  clock.begin(); 
+  clock.setDateTime(__DATE__, __TIME__);     
+ 
+
+//SD CARD 
+  pinMode(chipSelect, OUTPUT); // chip select pin must be set to OUTPUT mode
+  if (!SD.begin(chipSelect)) { // Initialize SD card
+    Serial.println("Could not initialize SD card."); // if return value is false, something went wrong.
+  }
+  
+  
+  //Button 
+  pinMode(3, INPUT_PULLUP);
+  int button = digitalRead(3);
+
+  if (button == LOW) {
+    if (SD.exists("file.txt")) { // if "file.txt" exists, fill will be deleted
+    Serial.println("File exists.");
+    if (SD.remove("file.txt") == true) {
+      Serial.println("Successfully removed file.");
+      file = SD.open("file.txt", FILE_WRITE);
+      file.println("Humidity, Temperature, Time");
+      file.close();
+  }
+    } else {
+      Serial.println("Could not removed file.");
+    }
+    
+  } else {
+    Serial.println("Button not Pushed");
+  }
+ 
+}
+
+void loop() { 
+ 
+
+ // Pump 
+  unsigned long currentMillis = millis();
+
+
+  if (pumpState == pumpOn) {
+    if ((currentMillis - previousPumpTime) >= pumpDuration){
+      digitalWrite(pumpPin, pumpOn);
+      //previousPumpTime = currentMillis;
+      
+      Serial.println("pump off");
+      }
+    
+    }else {
+      if ((currentMillis - previousPumpTime) >= pumpInterval){
+        digitalWrite(pumpPin, pumpOff);
+        //previousPumpTime = currentMillis;
+        Serial.println("pump on");
+    
+      }else {
+        Serial.println(currentMillis);
+        if  (currentMillis <= 5000){
+          digitalWrite(pumpPin,pumpOn);
+         Serial.println("First time on");
+
+        }            
+        }    
+}
+     
+}
+void collectData() {
+  float humi  = dht.readHumidity(); 
+  float tempC = dht.readTemperature(); 
+  float tempF = dht.readTemperature(true); 
+
+  if (isnan(humi) || isnan(tempC) || isnan(tempF)) { 
+    Serial.println("Failed to read from DHT sensor!"); 
+  } else { 
+    Serial.print("Humidity: "); 
+    Serial.print(humi); 
+    Serial.print("%"); 
+
+    Serial.print("  |  ");  
+
+    Serial.print("Temperature: "); 
+    Serial.print(tempC); 
+    Serial.print("°C ~ "); 
+    Serial.print(tempF); 
+    Serial.println("°F"); 
+  } 
+  //Time  
+  dt = clock.getDateTime(); 
+  Serial.print("Raw data: "); 
+  Serial.print(dt.year);   Serial.print("-"); 
+  Serial.print(dt.month);  Serial.print("-"); 
+  Serial.print(dt.day);    Serial.print(" "); 
+  Serial.print(dt.hour);   Serial.print(":"); 
+  Serial.print(dt.minute); Serial.print(":"); 
+  Serial.print(dt.second); Serial.println(""); 
+  
+  Serial.print(dt.hour); 
+  Serial.print(" hour(s), "); 
+  Serial.print(dt.minute); 
+  Serial.print(" minute(s)"); 
+  Serial.println(" "); 
+  
+  file = SD.open("file.txt", FILE_WRITE); // open "file.txt" to write data
+  if (file) {
+    //float number = humi; // generate random number between 0 and 9
+    file.print(humi);      file.print(",");
+    file.print(tempC);     file.print(",");
+    file.print(dt.hour);   file.print(":"); 
+    file.print(dt.minute); file.print(":"); 
+    file.print(dt.second); file.println(""); 
+    file.close(); // close file
+    
+
+    
+    
+  } else {
+    Serial.println("Could not open file (writing).");
+  }
+  
+  file = SD.open("file.txt", FILE_READ); // open "file.txt" to read data
+  if (file) {
+    Serial.println("--- Reading start ---");
+    char character;
+    while ((character = file.read()) != -1) { // this while loop reads data stored in "file.txt" and prints it to serial monitor
+      Serial.print(character);
+    }
+    file.close();
+    Serial.println("--- Reading end ---");
+  } else {
+    Serial.println("Could not open file (reading).");
+  }
+}
